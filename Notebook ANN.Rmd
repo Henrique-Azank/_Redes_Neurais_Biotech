@@ -1,0 +1,181 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(readxl)
+library(GGally)
+library(tidyverse)
+library(neuralnet)
+
+```
+
+```{r}
+
+install.packages("neuralnet")
+
+```
+
+```{r}
+
+Data <- read_excel("C:/Users/User/Desktop/TCC/Versão Final/Tabelas e Planilhas.xlsx")
+
+Data
+
+
+```
+
+```{r}
+
+Reg = lm(Rendimento ~ I(Nitro^2)+I(Fosfo^2)+I(Brix^2)+Nitro+Fosfo+Brix+Nitro:Fosfo+Nitro:Brix+Brix:Fosfo, data = Data)
+summary(Reg)
+
+```
+
+```{r}
+
+RSM_Predito = predict(Reg)
+RSM_Predito
+
+```
+
+```{r}
+
+Dados_ANN = Data
+
+Scale = function(x){
+  (x-min(x))/(max(x)-min(x))
+}
+
+Dados_ANN = Dados_ANN %>%
+  mutate_all(Scale)
+
+Dados_ANN
+
+```
+
+```{r}
+
+set.seed(42)
+
+Rede_1Neuron = neuralnet(Rendimento ~ Nitro+Fosfo+Brix,
+                         data = Dados_ANN)
+
+plot(Rede_1Neuron, rep = 'best')
+
+```
+
+```{r}
+
+Resultados_1Neuron = compute(Rede_1Neuron,Dados_ANN[,1:3])
+
+UnScale = function(x,Original){
+  x*(max(Original)-min(Original)) + min(Original)
+}
+
+Comparation = data.frame(ANN_Predito = UnScale(Resultados_1Neuron$net.result, Original = Data$Rendimento), Experimento = Data$Rendimento)%>% mutate(Residuos = ANN_Predito - Experimento)%>%
+  mutate(Residuos_Quadrados = Residuos^2,
+         Menos_Media = (Experimento - mean(Experimento))^2)
+
+Comparation
+
+```
+
+```{r}
+
+Comparation %>%
+  summarise(R_Quadrado = 1-(sum(Residuos_Quadrados)/sum(Menos_Media)))
+  
+```
+
+```{r}
+
+Scale_2 = function(x){
+  (2 * ((x - min(x))/(max(x) - min(x)))) - 1
+}
+
+Dados_ANN_2 = Data %>%
+  mutate_all(Scale_2)
+
+Rede_4Neuron = neuralnet(Rendimento ~ Nitro+Fosfo+Brix,
+                         data = Dados_ANN_2,
+                         hidden = c(4),
+                         rep = 10)
+
+plot(Rede_4Neuron, rep = 'best')
+
+```
+
+```{r}
+
+Resultados_4Neuron = compute(Rede_4Neuron,Dados_ANN_2[,1:3])
+
+UnScale_2 = function(x,Original){
+  ((x+1)/2)*(max(Original)-min(Original)) + min(Original)
+}
+
+Comparation_2 = data.frame(ANN_Predito = UnScale_2(Resultados_4Neuron$net.result, Original = Data$Rendimento), Experimento = Data$Rendimento)%>% mutate(Residuos = ANN_Predito - Experimento)%>%
+  mutate(Residuos_Quadrados = Residuos^2,
+         Menos_Media = (Experimento - mean(Experimento))^2)
+
+Comparation_2
+
+```
+
+```{r}
+
+Comparation_2 %>%
+  summarise(R_Quadrado = 1-(sum(Residuos_Quadrados)/sum(Menos_Media)))
+
+```
+
+```{r}
+
+Dados_Gerais = Data%>%select(-c(Etanol,Prod))
+Dados_Gerais$ResultadosRSM = RSM_Predito
+Dados_Gerais$ResultadosANN = Comparation_2$ANN_Predito
+Dados_Gerais
+
+```
+
+```{r}
+
+Dados_Plot = Dados_Gerais %>% select(-c(Nitro,Fosfo,Brix))
+
+names(Dados_Plot) = c("Rendimento","Quadrático","RNA")
+
+Dados_Plot
+
+```
+
+```{r}
+
+Dados_Plot = Dados_Plot%>%gather(key = "Modelo",value = "Valor",-Rendimento)
+
+```
+
+```{r}
+
+ggplot(data = Dados_Plot)+
+  geom_point(aes(x = Rendimento, y = Valor, shape = Modelo,
+                 col = Modelo),
+             size = 2)+
+  geom_abline(intercept = 0, slope = 1, alpha = .6)+
+  scale_color_manual(values = c("Black","Red"))+
+  theme_stata()+
+  scale_x_continuous(breaks = seq(0,100,1), limits = c(86,95))+
+  scale_y_continuous(breaks = seq(0,100,1), limits = c(86,95))+
+  labs(y = "Valor Experimental de Rendimento (%)",
+       x = "Valor Previsto de Rendimento (%)")+
+  theme(legend.position = c(0.23,0.8),
+        axis.text.y = element_text(angle = 0),
+        axis.title.y = element_text(vjust = 4),
+        axis.title.x = element_text(vjust = -1))
+  
+
+```
